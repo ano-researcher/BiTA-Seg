@@ -2,7 +2,8 @@ import yaml
 import torch
 import random
 import numpy as np
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
+from sklearn.model_selection import KFold
 
 from src.models.vit_ccattn import BoundaryAwareViT
 from src.data.dataset_loader import ImageMaskDataset
@@ -24,48 +25,82 @@ def seed_worker(worker_id):
     random.seed(worker_seed)
 
 SEEDS = [42, 123, 2023]
+NUM_FOLDS = 5
 
-def main(config_path):
+
+def train_5fold_cv(config_path):
     cfg = yaml.safe_load(open(config_path))
+    dataset = ImageMaskDataset(cfg["data"]["root"])
+    n_samples = len(dataset)
+    indices = np.arange(n_samples)
 
-    for seed in SEEDS:
-        print(f"\n===== Training with seed {seed} =====")
-        set_seed(seed)
+    kf = KFold(n_splits=NUM_FOLDS, shuffle=True, random_state=42)
+    fold_metrics = []
 
-        # Dataset and DataLoader
-        ds = ImageMaskDataset(cfg["data"]["root"])
-        g = torch.Generator()
-        g.manual_seed(seed)
+    for fold, (train_idx, val_idx) in enumerate(kf.split(indices), 1):
+        print(f"\n===== Fold {fold}/{NUM_FOLDS} =====")
+        train_subset = Subset(dataset, train_idx)
+        val_subset = Subset(dataset, val_idx)
 
-        dl = DataLoader(
-            ds,
-            batch_size=cfg["training"]["batch_size"],
-            shuffle=True,
-            num_workers=4,
-            worker_init_fn=seed_worker,
-            generator=g
-        )
+        for seed in SEEDS:
+            print(f"\n--- Seed {seed} ---")
+            set_seed(seed)
 
-        # Model, optimizer, criterion, trainer
-        model = BoundaryAwareViT(**cfg["model"]).cuda()
-        optimizer = torch.optim.Adam(model.parameters(), lr=cfg["training"]["lr"])
-        criterion = DiceBCELoss()
-        trainer = Trainer(model, optimizer, criterion, device="cuda")
+            # DataLoaders
+            g = torch.Generator()
+            g.manual_seed(seed)
 
-        # Training loop
-        for epoch in range(cfg["training"]["epochs"]):
-            loss = trainer.train_epoch(dl)
-            print(f"[Seed {seed}] Epoch {epoch}: {loss:.4f}")
+            train_loader = DataLoader(
+                train_subset,
+                batch_size=cfg["training"]["batch_size"],
+                shuffle=True,
+                num_workers=4,
+                worker_init_fn=seed_worker,
+                generator=g
+            )
 
-        # Save model checkpoint per seed
-        torch.save(
-            model.state_dict(),
-            f"{cfg['training']['save_dir']}/model_seed{seed}.pth"
-        )
+            val_loader = DataLoader(
+                val_subset,
+                batch_size=cfg["training"]["batch_size"],
+                shuffle=False,
+                num_workers=4
+            )
+
+            # Model & optimizer
+            model = BoundaryAwareViT(**cfg["model"]).cuda()
+            optimizer = torch.optim.Adam(model.parameters(), lr=cfg["training"]["lr"])
+            criterion = DiceBCELoss()
+            trainer = Trainer(model, optimizer, criterion, device="cuda")
+
+            # Training loop
+            for epoch in range(cfg["training"]["epochs"]):
+                loss = trainer.train_epoch(train_loader)
+                print(f"[Fold {fold} Seed {seed}] Epoch {epoch}: {loss:.4f}")
+
+            # Validation metrics for this fold & seed
+            val_dice = trainer.evaluate(val_loader)  # implement this method in your Trainer
+            print(f"[Fold {fold} Seed {seed}] Val Dice: {val_dice:.4f}")
+
+            # Save checkpoint per fold & seed
+            ckpt_path = f"{cfg['training']['save_dir']}/fold{fold}_seed{seed}.pth"
+            torch.save(model.state_dict(), ckpt_path)
+            print(f"Saved checkpoint: {ckpt_path}")
+
+            fold_metrics.append({
+                "fold": fold,
+                "seed": seed,
+                "val_dice": val_dice,
+                "checkpoint": ckpt_path
+            })
+
+    # Aggregate metrics across folds & seeds
+    all_dice = [m["val_dice"] for m in fold_metrics]
+    print(f"\n5-Fold CV Mean Dice: {np.mean(all_dice):.4f} ± {np.std(all_dice):.4f}")
+    return fold_metrics
 
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="configs/default.yaml")
     args = parser.parse_args()
-    main(args.config)
+    train_5fold_cv(args.config)
