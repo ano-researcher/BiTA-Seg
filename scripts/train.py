@@ -6,6 +6,18 @@ from src.models.vit_ccattn import BoundaryAwareViT
 from src.data.dataset_loader import ImageMaskDataset
 from src.training.trainer import Trainer
 from src.training.losses import DiceBCELoss
+import random
+
+def set_seed(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+SEEDS = [42, 123, 2023]
 
 
 def main(config_path):
