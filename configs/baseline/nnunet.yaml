@@ -1,1 +1,18 @@
+model:
+  name: nnUNet
+  configuration: 2D
+  preset: default
 
+data:
+  img_size: 256
+
+training:
+  framework: nnUNet
+  epochs: 50
+  seeds: [42, 123, 2023]
+  cross_validation: 5-fold
+
+evaluation:
+  metrics: [Dice, IoU, HD95, Params, Latency]
+
+# nnU-Net was trained using its official 2D configuration.
