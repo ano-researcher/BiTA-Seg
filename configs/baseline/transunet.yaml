@@ -1,1 +1,33 @@
+model:
+  name: TransUNet
+  img_size: 256
+  patch_size: 16
+  embed_dim: 768
+  depth: 12
+  num_heads: 12
+  cnn_backbone: ResNet50
+
+data:
+  img_size: 256
+  augmentations:
+    hflip: true
+    affine:
+      shift: 0.1
+      scale: 0.2
+      rotate: 10
+    brightness_contrast: true
+    gaussian_blur: true
+
+training:
+  optimizer: AdamW
+  lr: 1e-4
+  weight_decay: 1e-4
+  batch_size: 2   # safer for memory
+  epochs: 50
+  loss: BCE + Dice
+  seeds: [42, 123, 2023]
+  cross_validation: 5-fold
+
+evaluation:
+  metrics: [Dice, IoU, HD95, Params, Latency]
 
