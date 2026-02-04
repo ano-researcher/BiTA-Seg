@@ -46,7 +46,6 @@ def train_5fold_cv(config_path):
             print(f"\n--- Seed {seed} ---")
             set_seed(seed)
 
-            # DataLoaders
             g = torch.Generator()
             g.manual_seed(seed)
 
@@ -66,22 +65,21 @@ def train_5fold_cv(config_path):
                 num_workers=4
             )
 
-            # Model & optimizer
+          
             model = BoundaryAwareViT(**cfg["model"]).cuda()
             optimizer = torch.optim.Adam(model.parameters(), lr=cfg["training"]["lr"])
             criterion = DiceBCELoss()
             trainer = Trainer(model, optimizer, criterion, device="cuda")
 
-            # Training loop
+         
             for epoch in range(cfg["training"]["epochs"]):
                 loss = trainer.train_epoch(train_loader)
                 print(f"[Fold {fold} Seed {seed}] Epoch {epoch}: {loss:.4f}")
 
-            # Validation metrics for this fold & seed
+         
             val_dice = trainer.evaluate(val_loader)  # implement this method in your Trainer
             print(f"[Fold {fold} Seed {seed}] Val Dice: {val_dice:.4f}")
 
-            # Save checkpoint per fold & seed
             ckpt_path = f"{cfg['training']['save_dir']}/fold{fold}_seed{seed}.pth"
             torch.save(model.state_dict(), ckpt_path)
             print(f"Saved checkpoint: {ckpt_path}")
@@ -93,7 +91,6 @@ def train_5fold_cv(config_path):
                 "checkpoint": ckpt_path
             })
 
-    # Aggregate metrics across folds & seeds
     all_dice = [m["val_dice"] for m in fold_metrics]
     print(f"\n5-Fold CV Mean Dice: {np.mean(all_dice):.4f} ± {np.std(all_dice):.4f}")
     return fold_metrics
