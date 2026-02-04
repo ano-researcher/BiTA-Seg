@@ -8,3 +8,11 @@ Use Conda:
 bash
 conda env create -f environment.yml
 conda activate miccai-BitaSeg
+
+
+#Baselines
+
+Baseline configurations and training protocols are provided in
+`configs/baselines/` and documented in `BASELINES.md`.
+All baselines were retrained using identical data splits,
+augmentations, and evaluation procedures.
